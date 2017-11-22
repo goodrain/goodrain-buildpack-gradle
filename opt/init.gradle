@@ -1,0 +1,19 @@
+allprojects {
+    repositories {
+        all { ArtifactRepository repo ->
+            if(repo instanceof MavenArtifactRepository){
+                def url = repo.url.toString()
+                if (url.startsWith('https://repo1.maven.org/maven2') || url.startsWith('https://jcenter.bintray.com/')) {
+                    project.logger.lifecycle "Repository ${repo.url} removed."
+                    remove repo
+                }
+            }
+        }
+        maven {
+            url "http://maven.goodrain.me/"
+        }
+        ivy {
+            url "http://ivy.goodrain.me/"
+        }
+    }
+}

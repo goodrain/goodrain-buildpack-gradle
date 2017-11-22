@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# bin/compile <build-dir> <cache-dir> <env-dir>
+
+# fail fast
+set -e
+
+BP_DIR=$(cd $(dirname $0)/..; pwd) # absolute path
+BIN_DIR=$BP_DIR/bin
+OPT_DIR=$BP_DIR/opt
+LIB_DIR=$BP_DIR/lib
+. $LIB_DIR/common.sh
+. $LIB_DIR/failures.sh
+
+# parse args
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_DIR=$3
+
+export_env_dir $ENV_DIR
+
+# 检查build.gradle的task是否包含有jettyRun、jettyRunWar、run
+if is_have_jetty_run $BUILD_DIR; then
+    echo "build.gradle not exits or task stage depends on jettyRun."
+    exit 1
+elif is_have_jetty_runwar $BUILD_DIR; then
+    echo "build.gradle not exits or task stage depends on jettyRunWar."
+    exit 1
+elif is_have_run $BUILD_DIR; then
+    echo "build.gradle not exits or task stage depends on run."
+    exit 1
+fi
+
+
+if has_stage_task $BUILD_DIR; then
+    DEFAULT_GRADLE_TASK="stage"
+elif is_spring_boot $BUILD_DIR; then
+    if is_webapp_runner $BUILD_DIR; then
+        echo "-----> Spring Boot and Webapp Runner detected"
+    else
+        echo "-----> Spring Boot detected"
+    fi
+    DEFAULT_GRADLE_TASK="build -x test"
+elif is_ratpack $BUILD_DIR; then
+    echo "-----> Ratpack detected"
+    DEFAULT_GRADLE_TASK="installDist -x test"
+elif is_webrunner $BUILD_DIR; then
+    echo "-----> webrunner detected"
+    DEFAULT_GRADLE_TASK="build -x test"
+else
+    DEFAULT_GRADLE_TASK="build -x test"
+fi
+
+if [ -z "$GRADLE_TASK" ]; then
+  GRADLE_TASK="${DEFAULT_GRADLE_TASK}"
+fi
+
+JVM_COMMON_BUILDPACK=${JVM_COMMON_BUILDPACK:-"http://lang.goodrain.com/jvm/jvm-common.tgz"}
+mkdir -p /tmp/jvm-common
+curl --silent --location $JVM_COMMON_BUILDPACK | tar xzm -C /tmp/jvm-common
+. /tmp/jvm-common/bin/util
+. /tmp/jvm-common/bin/java
+install_java_with_overlay ${BUILD_DIR}
+
+export GRADLE_OPTS=${GRADLE_OPTS-"-Dorg.gradle.daemon=false"}
+
+if [ ! -d $CACHE_DIR ] ; then
+  mkdir $CACHE_DIR
+fi
+
+export GRADLE_USER_HOME=$CACHE_DIR/.gradle
+
+if [ ! -f $BUILD_DIR/gradlew ] ; then
+  echo "-----> Installing Gradle Wrapper..."
+  echo "       WARNING: Your application does not have it's own gradlew file."
+  echo "       We'll install one for you, but this is a deprecated feature and"
+  echo "       in the future may not be supported."
+  cp -rf ${OPT_DIR}/wrapper/* ${BUILD_DIR}
+else
+    cp -rf ${OPT_DIR}/wrapper/* ${BUILD_DIR}
+fi
+BUILDCMD="./gradlew"
+chmod +x ${BUILD_DIR}/gradlew
+
+BUILDCMD="$BUILDCMD $GRADLE_TASK -I ${OPT_DIR}/init.gradle"
+
+cd $BUILD_DIR
+
+# 替换build.gradle中的mavenCentral() jcenter()
+sed -i \
+    -e "s|mavenCentral()|maven { url 'http://maven.goodrain.me' }|" \
+    -e "s|jcenter()|maven { url 'http://maven.goodrain.me' }|" \
+    $BUILD_DIR/build.gradle
+
+# build app
+echo "-----> Building Gradle app..."
+echo "       WARNING: The Gradle buildpack is currently in Beta."
+echo "-----> executing $BUILDCMD"
+
+buildLogFile=$(create_build_log_file)
+
+$BUILDCMD 2>&1 | output $buildLogFile
+
+if [ "${PIPESTATUS[*]}" != "0 0" ]; then
+  handle_gradle_errors $buildLogFile
+fi
+
+if is_webrunner $BUILD_DIR; then
+    DOWNLOAD_URL="http://lang.goodrain.com/java/webapp-runner/webapp-runner-8.5.5.2.jar"
+    curl -sfL $DOWNLOAD_URL -o ${BUILD_DIR}/build/webapp-runner-8.5.5.2.jar
+fi
