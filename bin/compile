@@ -54,7 +54,7 @@ if [ -z "$GRADLE_TASK" ]; then
   GRADLE_TASK="${DEFAULT_GRADLE_TASK}"
 fi
 
-JVM_COMMON_BUILDPACK=${JVM_COMMON_BUILDPACK:-"http://lang.goodrain.com/jvm/jvm-common.tgz"}
+JVM_COMMON_BUILDPACK=${JVM_COMMON_BUILDPACK:-"http://lang.goodrain.me/jvm/jvm-common.tgz"}
 mkdir -p /tmp/jvm-common
 curl --silent --location $JVM_COMMON_BUILDPACK | tar xzm -C /tmp/jvm-common
 . /tmp/jvm-common/bin/util
@@ -105,6 +105,6 @@ if [ "${PIPESTATUS[*]}" != "0 0" ]; then
 fi
 
 if is_webrunner $BUILD_DIR; then
-    DOWNLOAD_URL="http://lang.goodrain.com/java/webapp-runner/webapp-runner-8.5.5.2.jar"
+    DOWNLOAD_URL="http://lang.goodrain.me/java/webapp-runner/webapp-runner-8.5.5.2.jar"
     curl -sfL $DOWNLOAD_URL -o ${BUILD_DIR}/build/webapp-runner-8.5.5.2.jar
 fi
